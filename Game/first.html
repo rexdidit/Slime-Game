@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Slime Meat Collector</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    #gameCanvas {
+      background-color: #f0f0f0; /* Temporary gray background */
+      background-image: url('Gamebackground.svg');
+      background-size: cover;
+      background-position: center;
+      width: 100%;
+      height: 100vh;
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .sky-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 40%;
+      background: linear-gradient(to bottom, 
+        rgba(92, 204, 239, 0.3),
+        rgba(92, 204, 239, 0)
+      );
+      animation: skyAnimation 10s infinite;
+    }
+    @keyframes skyAnimation {
+      0% {
+        opacity: 0.3;
+      }
+      50% {
+        opacity: 0.6;
+      }
+      100% {
+        opacity: 0.3;
+      }
+    }
+    #gameUI {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 20px;
+      text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5);
+    }
+    #winMessage {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      font-size: 24px;
+      text-align: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div class="sky-overlay"></div>
+  <div id="gameUI">
+    <div>Meat Collected: <span id="meatCount">0</span>/20</div>
+    <div>Use arrow keys or WASD to move</div>
+  </div>
+  <div id="winMessage">
+    You collected all 20 meats!<br>
+    The slime is now well fed.<br><br>
+    Refresh to play again!
+  </div>
+
+  <script>
+    // Add at the top of your script section
+    const slimeSprites = {
+        idle: [],
+        moving: []
+    };
+
+    // Load slime sprites
+    for(let i = 1; i <= 4; i++) {
+        const idleSprite = new Image();
+        idleSprite.src = `Idle1.svg`;
+        slimeSprites.idle.push(idleSprite);
+    }
+
+    const movingSprite = new Image();
+    movingSprite.src = 'Movement.svg';
+    slimeSprites.moving.push(movingSprite);
+
+    const meatSprite = new Image();
+    meatSprite.src = 'meat.svg';
+
+    // Game setup
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const meatCountElement = document.getElementById('meatCount');
+    const winMessageElement = document.getElementById('winMessage');
+    
+    // Add this after canvas initialization
+    const background = new Image();
+    background.src = 'Gamebackground.svg';
+    background.onerror = function() {
+        console.error('Error loading background image');
+    };
+    background.onload = function() {
+        console.log('Background image loaded successfully');
+    };
+    
+    // Set canvas size to window size
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    // Game variables
+    let meatCollected = 0;
+    const meatGoal = 20;
+    
+    // Game objects
+    const slime = {
+      x: canvas.width * 0.5, // Start in middle
+      y: canvas.height * 0.75, // Start on grass area
+      width: 40,
+      height: 30,
+      speed: 4,
+      color: '#8eff60',
+      outline: '#008800',
+      moveLeft: false,
+      moveRight: false,
+      moveUp: false,
+      moveDown: false,
+      currentFrame: 0,
+      frameCount: 0,
+      animationSpeed: 10, // Adjust this to control animation speed
+      isMoving: false
+    };
+    
+    // Create meat array
+    const meats = [];
+    
+    // Cloud generator
+    const clouds = [];
+    function generateClouds() {
+      for (let i = 0; i < 5; i++) {
+        clouds.push({
+          x: Math.random() * canvas.width,
+          y: 50 + Math.random() * 70,
+          width: 60 + Math.random() * 40,
+          height: 30 + Math.random() * 20,
+          speed: 0.5 + Math.random() * 0.5
+        });
+      }
+    }
+    
+    // Sun
+    const sun = {
+      x: canvas.width * 0.7,
+      y: 80,
+      radius: 30,
+      color: '#ffee44'
+    };
+    
+    // Generate initial meat
+    function generateMeat() {
+      if (meats.length < 5 && meatCollected < meatGoal) {
+        // Define the green area bounds
+        const greenAreaTop = canvas.height * 0.75;    // Top of green area
+        const greenAreaBottom = canvas.height * 0.95;  // Bottom of green area
+        const margin = 50; // Margin from edges
+        
+        meats.push({
+            x: margin + Math.random() * (canvas.width - 2 * margin),
+            y: greenAreaTop + Math.random() * (greenAreaBottom - greenAreaTop),
+            width: 20,
+            height: 15
+        });
+      }
+    }
+    
+    // Input handling
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowLeft' || e.key === 'a') slime.moveLeft = true;
+      if (e.key === 'ArrowRight' || e.key === 'd') slime.moveRight = true;
+      if (e.key === 'ArrowUp' || e.key === 'w') slime.moveUp = true;
+      if (e.key === 'ArrowDown' || e.key === 's') slime.moveDown = true;
+    });
+    
+    window.addEventListener('keyup', function(e) {
+      if (e.key === 'ArrowLeft' || e.key === 'a') slime.moveLeft = false;
+      if (e.key === 'ArrowRight' || e.key === 'd') slime.moveRight = false;
+      if (e.key === 'ArrowUp' || e.key === 'w') slime.moveUp = false;
+      if (e.key === 'ArrowDown' || e.key === 's') slime.moveDown = false;
+    });
+    
+    // Check for collisions between slime and meat
+    function checkCollisions() {
+      for (let i = meats.length - 1; i >= 0; i--) {
+        const meat = meats[i];
+        
+        if (
+          slime.x < meat.x + meat.width &&
+          slime.x + slime.width > meat.x &&
+          slime.y < meat.y + meat.height &&
+          slime.y + slime.height > meat.y
+        ) {
+          // Collision detected
+          meats.splice(i, 1);
+          meatCollected++;
+          meatCountElement.textContent = meatCollected;
+          
+          // Play a sound (simple)
+          const audio = new Audio();
+          audio.src = "data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGluYXJlc1ZvaWNlcy5jb20AAAAAAAAAAAAAAAAAAAAA//uQwAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAAFLgCioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKi//////////////////////////////////////////////////////////////////8AAAAeTEFNRTMuMTAwBKUAAP///y/iFMgAQAAABQAABS71Pf4SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/7kMAjAAAAAGkAAAAAAAAA0gAAAAAAAABBKkVJRVRBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFB//sQwP+AAAD/AAAAAAAA0gAAAABBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQ==";
+          audio.play();
+          
+          // Check for win condition
+          if (meatCollected >= meatGoal) {
+            setTimeout(() => {
+              winMessageElement.style.display = 'block';
+            }, 500);
+          }
+        }
+      }
+    }
+    
+    // Update game state
+    function update() {
+      // Define movement boundaries
+      const greenAreaTop = canvas.height * 0.75;    // Top of green area
+      const greenAreaBottom = canvas.height * 0.95;  // Bottom of green area
+      const margin = 20; // Margin from edges
+      
+      // Move slime with bounds checking
+      if (slime.moveLeft && slime.x > margin) {
+          slime.x -= slime.speed;
+      }
+      if (slime.moveRight && slime.x < canvas.width - slime.width - margin) {
+          slime.x += slime.speed;
+      }
+      if (slime.moveUp && slime.y > greenAreaTop) {
+          slime.y -= slime.speed;
+      }
+      if (slime.moveDown && slime.y < greenAreaBottom - slime.height) {
+          slime.y += slime.speed;
+      }
+      
+      // Move clouds
+      clouds.forEach(cloud => {
+        cloud.x += cloud.speed;
+        if (cloud.x > canvas.width) {
+          cloud.x = -cloud.width;
+        }
+      });
+      
+      // Randomly generate meat (with a small chance each frame)
+      if (Math.random() < 0.02) {
+        generateMeat();
+      }
+      
+      // Check for collisions
+      checkCollisions();
+    }
+    
+    // Draw everything
+    function draw() {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw sun
+      ctx.beginPath();
+      ctx.arc(sun.x, sun.y, sun.radius, 0, Math.PI * 2);
+      ctx.fillStyle = sun.color;
+      ctx.fill();
+      
+      // Draw some sun rays
+      for (let i = 0; i < 8; i++) {
+        const angle = i * Math.PI / 4;
+        ctx.beginPath();
+        ctx.moveTo(sun.x + Math.cos(angle) * sun.radius, sun.y + Math.sin(angle) * sun.radius);
+        ctx.lineTo(sun.x + Math.cos(angle) * (sun.radius + 20), sun.y + Math.sin(angle) * (sun.radius + 20));
+        ctx.strokeStyle = sun.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+      
+      // Draw clouds
+      clouds.forEach(cloud => {
+        ctx.beginPath();
+        ctx.ellipse(cloud.x, cloud.y, cloud.width / 2, cloud.height / 2, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fill();
+      });
+      
+      // Draw water splash (randomly)
+      if (Math.random() < 0.05) {
+        ctx.beginPath();
+        const splashX = 100 + Math.random() * (canvas.width - 200);
+        const splashY = canvas.height * 0.6;
+        ctx.moveTo(splashX, splashY);
+        for (let i = 0; i < 5; i++) {
+          ctx.lineTo(splashX + (Math.random() * 20 - 10), splashY - 10 - Math.random() * 10);
+        }
+        ctx.lineTo(splashX, splashY);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fill();
+      }
+      
+      // Draw grass details
+      for (let i = 0; i < 20; i++) {
+        const grassX = Math.random() * canvas.width;
+        const grassY = canvas.height * 0.8 + Math.random() * 50;
+        ctx.beginPath();
+        ctx.moveTo(grassX, grassY);
+        ctx.lineTo(grassX + 3, grassY - 10);
+        ctx.strokeStyle = '#90d090';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      
+      // Draw some grass particles
+      for (let i = 0; i < 5; i++) {
+        if (Math.random() < 0.7) {
+          const particleX = Math.random() * canvas.width;
+          const particleY = canvas.height * 0.8 + Math.random() * 20;
+          ctx.fillStyle = '#ffee66';
+          ctx.fillRect(particleX, particleY, 3, 3);
+        }
+      }
+      
+      // Draw meats using sprite
+      meats.forEach(meat => {
+        ctx.drawImage(meatSprite, meat.x, meat.y, meat.width, meat.height);
+      });
+      
+      // Draw slime using sprites
+      slime.isMoving = slime.moveLeft || slime.moveRight || slime.moveUp || slime.moveDown;
+      
+      if (slime.isMoving) {
+          ctx.drawImage(slimeSprites.moving[0], slime.x, slime.y, slime.width, slime.height);
+      } else {
+          // Animate idle frames
+          slime.frameCount++;
+          if (slime.frameCount >= slime.animationSpeed) {
+              slime.currentFrame = (slime.currentFrame + 1) % slimeSprites.idle.length;
+              slime.frameCount = 0;
+          }
+          ctx.drawImage(
+              slimeSprites.idle[slime.currentFrame],
+              slime.x,
+              slime.y,
+              slime.width,
+              slime.height
+          );
+      }
+    }
+    
+    // Game loop
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+    
+    // Initialize the game
+    function init() {
+      generateClouds();
+      generateMeat();
+      gameLoop();
+      
+      // Handle window resize
+      window.addEventListener('resize', function() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Recalculate green area bounds
+        const greenAreaTop = canvas.height * 0.75;
+        const greenAreaBottom = canvas.height * 0.95;
+        
+        // Keep slime within bounds after resize
+        if (slime.y < greenAreaTop) {
+            slime.y = greenAreaTop;
+        }
+        if (slime.y > greenAreaBottom - slime.height) {
+            slime.y = greenAreaBottom - slime.height;
+        }
+        
+        // Update sun position
+        sun.x = canvas.width * 0.7;
+      });
+    }
+    
+    // Start the game
+    init();
+  </script>
+</body>
+</html>
